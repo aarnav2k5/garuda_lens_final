@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     app_host: str = Field(default="0.0.0.0", alias="APP_HOST")
     app_port: int = Field(default=8000, alias="APP_PORT")
     allowed_origins_raw: str = Field(default="http://localhost:3000", alias="ALLOWED_ORIGINS")
+    allowed_origin_regex_raw: str = Field(default="", alias="ALLOWED_ORIGIN_REGEX")
     planetary_computer_stac_url: str = Field(
         default="https://planetarycomputer.microsoft.com/api/stac/v1",
         alias="PLANETARY_COMPUTER_STAC_URL",
@@ -20,9 +21,34 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
+    @staticmethod
+    def _normalize_origin(origin: str) -> str:
+        normalized = origin.strip().strip("\"'")
+        if normalized in {"*", ""}:
+            return normalized
+        return normalized.rstrip("/")
+
     @property
     def allowed_origins(self) -> list[str]:
-        return [origin.strip() for origin in self.allowed_origins_raw.split(",") if origin.strip()]
+        seen: set[str] = set()
+        origins: list[str] = []
+        for item in self.allowed_origins_raw.split(","):
+            origin = self._normalize_origin(item)
+            if not origin or origin in seen:
+                continue
+            seen.add(origin)
+            origins.append(origin)
+        return origins
+
+    @property
+    def allowed_origin_regex(self) -> str | None:
+        regex = self.allowed_origin_regex_raw.strip()
+        return regex or None
+
+    @property
+    def allow_credentials(self) -> bool:
+        # Wildcard origins cannot be used with credentialed CORS requests.
+        return "*" not in self.allowed_origins
 
 
 @lru_cache
